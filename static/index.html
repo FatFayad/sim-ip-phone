@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>H0MES SIM Phone</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --card: #141b29;
+    --card2: #1b2436;
+    --border: #28354c;
+    --text: #eef2ff;
+    --muted: #8b9bb4;
+    --green: #22c55e;
+    --green-dark: #16a34a;
+    --red: #ef4444;
+    --red-dark: #dc2626;
+    --blue: #3b82f6;
+    --amber: #f59e0b;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(circle at top, #131d31 0%, var(--bg) 60%);
+    color: var(--text);
+    min-height: 100dvh;
+    display: flex;
+    justify-content: center;
+    padding: 14px;
+  }
+  .app { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 12px; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 14px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .pill.ok { color: #86efac; border-color: rgba(34, 197, 94, 0.4); background: rgba(34, 197, 94, 0.12); }
+  .pill.warn { color: #fcd34d; border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.12); }
+  .pill.bad { color: #fca5a5; border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.12); }
+
+  .hidden { display: none !important; }
+  .title { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+  .sub { font-size: 12px; color: var(--muted); }
+
+  /* PIN Screen */
+  .pin-wrap { text-align: center; padding: 24px 16px; }
+  .pin-dots { display: flex; justify-content: center; gap: 12px; margin: 18px 0; min-height: 18px; }
+  .pin-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); transition: 0.15s; }
+  .pin-dot.filled { background: var(--blue); border-color: var(--blue); }
+  .pin-input {
+    width: 100%; max-width: 220px; text-align: center; font-size: 22px; letter-spacing: 6px;
+    padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border);
+    background: var(--card2); color: var(--text); outline: none;
+  }
+
+  /* Dialer */
+  .num-box {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--card2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 8px 12px; margin-bottom: 12px;
+  }
+  .num-input {
+    flex: 1; background: transparent; border: none; color: var(--text);
+    font-size: 24px; font-weight: 600; letter-spacing: 0.6px; outline: none; min-width: 0;
+  }
+  .icon-btn {
+    background: transparent; border: none; color: var(--muted); font-size: 18px;
+    cursor: pointer; padding: 6px 8px; border-radius: 10px;
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+
+  .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .key {
+    background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 14px; padding: 13px 0; font-size: 22px; font-weight: 600;
+    cursor: pointer; transition: transform 0.07s, background 0.15s;
+    display: flex; flex-direction: column; align-items: center; line-height: 1.1;
+  }
+  .key span { font-size: 10px; color: var(--muted); font-weight: 500; margin-top: 2px; letter-spacing: 1px; }
+  .key:active { transform: scale(0.95); background: #26334d; }
+
+  .btn {
+    border: none; border-radius: 14px; padding: 13px 16px; font-size: 15px; font-weight: 700;
+    cursor: pointer; color: #fff; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform 0.07s, opacity 0.15s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-green { background: var(--green); }
+  .btn-green:hover:not(:disabled) { background: var(--green-dark); }
+  .btn-red { background: var(--red); }
+  .btn-red:hover:not(:disabled) { background: var(--red-dark); }
+  .btn-ghost { background: var(--card2); border: 1px solid var(--border); color: var(--text); }
+  .btn-blue { background: var(--blue); }
+
+  /* Tabs */
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tab {
+    background: var(--card2); border: 1px solid var(--border); color: var(--muted);
+    padding: 9px; border-radius: 12px; font-weight: 600; font-size: 13px; cursor: pointer;
+  }
+  .tab.active { background: rgba(59, 130, 246, 0.18); border-color: var(--blue); color: var(--text); }
+
+  /* Active / Incoming Call */
+  .call-banner {
+    text-align: center;
+    padding: 20px 14px;
+    border-color: rgba(34, 197, 94, 0.5);
+    background: linear-gradient(180deg, rgba(34, 197, 94, 0.12), var(--card));
+  }
+  .call-banner.ringing {
+    border-color: rgba(245, 158, 11, 0.7);
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.18), var(--card));
+    animation: pulse 1.2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.35); }
+    50% { box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+  }
+  .call-num { font-size: 24px; font-weight: 800; margin: 6px 0; }
+  .call-timer { font-size: 15px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .call-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 14px; }
+
+  /* VU meters & Settings */
+  .meter-row { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  .meter-track { height: 7px; background: #0c1220; border-radius: 999px; overflow: hidden; border: 1px solid var(--border); }
+  .meter-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #22c55e, #eab308, #ef4444); transition: width 0.05s linear; }
+
+  .slider-group { margin-top: 10px; }
+  .slider-group label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  input[type="range"] { width: 100%; accent-color: var(--blue); }
+
+  .history-list { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; }
+  .history-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--card2); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px;
+  }
+  .error-msg { color: #fca5a5; font-size: 13px; margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Header -->
+  <div class="card">
+    <div class="row">
+      <div>
+        <div class="title">H0MES SIM Phone</div>
+        <div class="sub" id="subStatus">Connecting...</div>
+      </div>
+      <button class="btn btn-ghost hidden" id="btnLogout" style="padding:7px 11px;font-size:12px;">Lock</button>
+    </div>
+    <div class="pills">
+      <span class="pill" id="pillAdb">ADB: ...</span>
+      <span class="pill" id="pillSim">SIM: ...</span>
+      <span class="pill" id="pillJack">Audio: ...</span>
+    </div>
+  </div>
+
+  <!-- PIN Gate -->
+  <div class="card pin-wrap hidden" id="viewPin">
+    <div class="title">Enter Phone PIN</div>
+    <div class="sub" style="margin-top:4px;">Unlock browser mic &amp; SIM call controls</div>
+    <div style="margin-top:16px;">
+      <input class="pin-input" id="pinInput" type="password" inputmode="numeric" maxlength="32" placeholder="••••" />
+    </div>
+    <div style="margin-top:14px;">
+      <button class="btn btn-blue" id="btnUnlock" style="width:100%;max-width:220px;">Unlock</button>
+    </div>
+    <div class="error-msg" id="pinError"></div>
+  </div>
+
+  <!-- Main Unlocked Area -->
+  <div id="viewMain" class="hidden" style="display:flex;flex-direction:column;gap:12px;">
+    <!-- Incoming / Active Call Banner -->
+    <div class="card call-banner hidden" id="callCard">
+      <div class="sub" id="callBadge" style="font-weight:700;text-transform:uppercase;letter-spacing:0.8px;"></div>
+      <div class="call-num" id="callNumber">Unknown</div>
+      <div class="call-timer" id="callTimer">00:00</div>
+
+      <div id="ringingActions" class="call-actions hidden">
+        <button class="btn btn-green" id="btnAnswer">Answer</button>
+        <button class="btn btn-red" id="btnDecline">Decline</button>
+      </div>
+
+      <div id="activeActions" class="hidden">
+        <div class="call-actions">
+          <button class="btn btn-ghost" id="btnMuteMic">Mic: On</button>
+          <button class="btn btn-ghost" id="btnMuteSpk">Speaker: On</button>
+        </div>
+        <div class="call-actions" style="margin-top:10px;">
+          <button class="btn btn-ghost" id="btnToggleDtmf">Keypad</button>
+          <button class="btn btn-red" id="btnHangup">Hang Up</button>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <div class="meter-row">
+          <span>Caller</span>
+          <div class="meter-track"><div class="meter-fill" id="rxMeter"></div></div>
+        </div>
+        <div class="meter-row">
+          <span>Your Mic</span>
+          <div class="meter-track"><div class="meter-fill" id="txMeter"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="tabs" id="navTabs">
+      <button class="tab active" id="tabDial">Dialer</button>
+      <button class="tab" id="tabHistory">Recent Calls</button>
+    </div>
+
+    <!-- Dialer Card -->
+    <div class="card" id="viewDial">
+      <div class="num-box">
+        <input class="num-input" id="dialInput" type="tel" placeholder="Enter number..." autocomplete="off" />
+        <button class="icon-btn" id="btnPlus" title="Insert +">+</button>
+        <button class="icon-btn" id="btnBackspace" title="Backspace">⌫</button>
+      </div>
+
+      <div class="keypad" id="keypad">
+        <button class="key" data-digit="1">1<span>&nbsp;</span></button>
+        <button class="key" data-digit="2">2<span>ABC</span></button>
+        <button class="key" data-digit="3">3<span>DEF</span></button>
+        <button class="key" data-digit="4">4<span>GHI</span></button>
+        <button class="key" data-digit="5">5<span>JKL</span></button>
+        <button class="key" data-digit="6">6<span>MNO</span></button>
+        <button class="key" data-digit="7">7<span>PQRS</span></button>
+        <button class="key" data-digit="8">8<span>TUV</span></button>
+        <button class="key" data-digit="9">9<span>WXYZ</span></button>
+        <button class="key" data-digit="*">*<span>&nbsp;</span></button>
+        <button class="key" data-digit="0">0<span>+</span></button>
+        <button class="key" data-digit="#">#<span>&nbsp;</span></button>
+      </div>
+
+      <div style="margin-top:12px;display:flex;gap:10px;" id="dialActionRow">
+        <button class="btn btn-green" id="btnCall" style="flex:1;">Call via SIM</button>
+      </div>
+      <div class="error-msg" id="dialError"></div>
+    </div>
+
+    <!-- History Card -->
+    <div class="card hidden" id="viewHistory">
+      <div class="history-list" id="historyList">
+        <div class="sub" style="text-align:center;padding:16px;">No calls recorded yet.</div>
+      </div>
+    </div>
+
+    <!-- Audio Controls & Settings -->
+    <div class="card">
+      <div class="row" style="cursor:pointer;" id="settingsHeader">
+        <div>
+          <div style="font-size:14px;font-weight:700;">Audio &amp; Line Settings</div>
+          <div class="sub" id="bridgeBadge">Audio bridge idle</div>
+        </div>
+        <span class="sub" id="settingsChevron">▼</span>
+      </div>
+
+      <div id="settingsBody" class="hidden" style="margin-top:10px;">
+        <div class="slider-group">
+          <label><span>Caller In (Capture)</span><span id="valCap">48</span></label>
+          <input type="range" id="rngCap" min="0" max="63" value="48" />
+        </div>
+        <div class="slider-group">
+          <label><span>Mic Out (Line Out)</span><span id="valOut">30</span></label>
+          <input type="range" id="rngOut" min="10" max="60" value="30" />
+        </div>
+        <div class="row" style="margin-top:12px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="chkHum" checked />
+            <span>180 Hz Hum Filter</span>
+          </label>
+          <button class="btn btn-ghost" id="btnAudioTest" style="padding:8px 12px;font-size:12px;">Live Audio Test</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const TARGET_RATE = 16000;
+  const FRAME_SAMPLES = 640;
+
+  let ctrlWs = null;
+  let audioWs = null;
+  let appState = null;
+  let timerHandle = null;
+  let ringInterval = null;
+  let micMuted = false;
+  let spkMuted = false;
+  let inCallKeypad = false;
+  let rxLevel = 0;
+  let txLevel = 0;
+
+  // WebAudio engine state
+  let audioCtx = null;
+  let micStream = null;
+  let micSource = null;
+  let workletNode = null;
+  let scriptNode = null;
+  let workletLoaded = false;
+  let startingMic = false;
+  let dialGraceUntil = 0;
+  let nextPlayTime = 0;
+
+  const $ = (id) => document.getElementById(id);
+
+  function showError(id, msg) {
+    $(id).textContent = msg || "";
+  }
+
+  function formatDuration(sec) {
+    const m = String(Math.floor(sec / 60)).padStart(2, "0");
+    const s = String(sec % 60).padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  function formatTime(epoch) {
+    if (!epoch) return "";
+    return new Date(epoch * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  // Synthesize dual-tone ringtone on browser WebAudio when call rings
+  function startRingtone() {
+    if (ringInterval) return;
+    const playBurst = () => {
+      try {
+        const ctx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx = ctx;
+        if (ctx.state === "suspended") ctx.resume().catch(() => {});
+        const now = ctx.currentTime;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.linearRampToValueAtTime(0.12, now + 0.03);
+        g.gain.setValueAtTime(0.12, now + 0.75);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.85);
+        g.connect(ctx.destination);
+        [440, 480].forEach((f) => {
+          const osc = ctx.createOscillator();
+          osc.frequency.value = f;
+          osc.connect(g);
+          osc.start(now);
+          osc.stop(now + 0.86);
+        });
+      } catch {}
+    };
+    playBurst();
+    ringInterval = setInterval(playBurst, 2200);
+  }
+
+  function stopRingtone() {
+    if (ringInterval) {
+      clearInterval(ringInterval);
+      ringInterval = null;
+    }
+  }
+
+  async function ensureAudioStarted() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch {}
+    }
+    if (audioCtx && audioCtx.state === "suspended") {
+      // Do not await audioCtx.resume() here because browsers leave it pending until a user tap
+      audioCtx.resume().catch(() => {});
+    }
+    connectAudioWs();
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showError("dialError", "Browser microphone blocked (make sure you opened HTTPS://).");
+      return false;
+    }
+    if (micStream) {
+      return true;
+    }
+    if (startingMic) {
+      return true;
+    }
+    startingMic = true;
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
+      await setupMicPipeline();
+      showError("dialError", "");
+      return true;
+    } catch (err) {
+      showError("dialError", `Mic permission needed for call audio: ${err.message || err}`);
+      return false;
+    } finally {
+      startingMic = false;
+    }
+  }
+
+  async function setupMicPipeline() {
+    micSource = audioCtx.createMediaStreamSource(micStream);
+    const silentGain = audioCtx.createGain();
+    silentGain.gain.value = 0;
+
+    const handlePcmFrame = (int16Arr) => {
+      let peak = 0;
+      for (let i = 0; i < int16Arr.length; i++) {
+        const a = Math.abs(int16Arr[i]);
+        if (a > peak) peak = a;
+      }
+      txLevel = micMuted ? 0 : Math.min(100, Math.round((peak / 20000) * 100));
+      if (!micMuted && audioWs && audioWs.readyState === WebSocket.OPEN) {
+        audioWs.send(int16Arr.buffer);
+      }
+    };
+
+    if (audioCtx.audioWorklet) {
+      const workletCode = `
+        class PcmResamplerProcessor extends AudioWorkletProcessor {
+          constructor(opts) {
+            super();
+            this.inRate = opts.processorOptions.inRate;
+            this.outRate = ${TARGET_RATE};
+            this.step = this.inRate / this.outRate;
+            this.pos = 0;
+            this.buf = new Int16Array(${FRAME_SAMPLES});
+            this.idx = 0;
+            this.prev = 0;
+          }
+          process(inputs) {
+            const input = inputs[0] && inputs[0][0];
+            if (!input || !input.length) return true;
+            while (this.pos < input.length) {
+              const i0 = Math.floor(this.pos);
+              const frac = this.pos - i0;
+              const s0 = i0 >= 0 ? input[i0] : this.prev;
+              const s1 = i0 + 1 < input.length ? input[i0 + 1] : s0;
+              const v = s0 + (s1 - s0) * frac;
+              this.buf[this.idx++] = Math.max(-32768, Math.min(32767, Math.round(v * 32767)));
+              if (this.idx >= ${FRAME_SAMPLES}) {
+                const copy = new Int16Array(this.buf);
+                this.port.postMessage(copy.buffer, [copy.buffer]);
+                this.idx = 0;
+              }
+              this.pos += this.step;
+            }
+            this.prev = input[input.length - 1];
+            this.pos -= input.length;
+            return true;
+          }
+        }
+        registerProcessor("pcm-resampler", PcmResamplerProcessor);
+      `;
+      const blobUrl = URL.createObjectURL(new Blob([workletCode], { type: "application/javascript" }));
+      try {
+        if (!workletLoaded) {
+          await audioCtx.audioWorklet.addModule(blobUrl);
+          workletLoaded = true;
+        }
+        URL.revokeObjectURL(blobUrl);
+        workletNode = new AudioWorkletNode(audioCtx, "pcm-resampler", {
+          processorOptions: { inRate: audioCtx.sampleRate },
+        });
+        workletNode.port.onmessage = (e) => handlePcmFrame(new Int16Array(e.data));
+        micSource.connect(workletNode);
+        workletNode.connect(silentGain);
+        silentGain.connect(audioCtx.destination);
+        return;
+      } catch {
+        URL.revokeObjectURL(blobUrl);
+      }
+    }
+
+    // Fallback for browsers without AudioWorklet
+    const step = audioCtx.sampleRate / TARGET_RATE;
+    let pos = 0;
+    let outBuf = new Int16Array(FRAME_SAMPLES);
+    let outIdx = 0;
+    scriptNode = audioCtx.createScriptProcessor(2048, 1, 1);
+    scriptNode.onaudioprocess = (ev) => {
+      const inp = ev.inputBuffer.getChannelData(0);
+      while (pos < inp.length) {
+        const i0 = Math.floor(pos);
+        const s = inp[i0] || 0;
+        outBuf[outIdx++] = Math.max(-32768, Math.min(32767, Math.round(s * 32767)));
+        if (outIdx >= FRAME_SAMPLES) {
+          handlePcmFrame(outBuf);
+          outBuf = new Int16Array(FRAME_SAMPLES);
+          outIdx = 0;
+        }
+        pos += step;
+      }
+      pos -= inp.length;
+    };
+    micSource.connect(scriptNode);
+    scriptNode.connect(silentGain);
+    silentGain.connect(audioCtx.destination);
+  }
+
+  function stopAudioEngine(fullStop = false) {
+    if (fullStop) {
+      if (workletNode) {
+        try { workletNode.disconnect(); } catch {}
+        workletNode = null;
+      }
+      if (scriptNode) {
+        try { scriptNode.disconnect(); } catch {}
+        scriptNode = null;
+      }
+      if (micSource) {
+        try { micSource.disconnect(); } catch {}
+        micSource = null;
+      }
+      if (micStream) {
+        micStream.getTracks().forEach((t) => t.stop());
+        micStream = null;
+      }
+    }
+    if (audioWs) {
+      try { audioWs.close(); } catch {}
+      audioWs = null;
+    }
+    rxLevel = 0;
+    txLevel = 0;
+    nextPlayTime = 0;
+  }
+
+  function connectAudioWs() {
+    if (audioWs && (audioWs.readyState === WebSocket.OPEN || audioWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    audioWs = new WebSocket(`${proto}//${location.host}/ws/audio`);
+    audioWs.binaryType = "arraybuffer";
+    audioWs.onmessage = (ev) => {
+      if (!(ev.data instanceof ArrayBuffer) || !audioCtx) return;
+      const i16 = new Int16Array(ev.data);
+      let peak = 0;
+      const f32 = new Float32Array(i16.length);
+      for (let i = 0; i < i16.length; i++) {
+        const a = Math.abs(i16[i]);
+        if (a > peak) peak = a;
+        f32[i] = i16[i] / 32768.0;
+      }
+      rxLevel = spkMuted ? 0 : Math.min(100, Math.round((peak / 20000) * 100));
+      if (spkMuted) return;
+
+      const buf = audioCtx.createBuffer(1, f32.length, TARGET_RATE);
+      buf.copyToChannel(f32, 0);
+      const src = audioCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(audioCtx.destination);
+
+      const now = audioCtx.currentTime;
+      if (nextPlayTime < now || nextPlayTime > now + 0.24) {
+        nextPlayTime = now + 0.06;
+      }
+      src.start(nextPlayTime);
+      nextPlayTime += buf.duration;
+    };
+    audioWs.onclose = (ev) => {
+      audioWs = null;
+      if (ev.code === 4401) showPinScreen();
+    };
+  }
+
+  function connectControlWs() {
+    if (ctrlWs && (ctrlWs.readyState === WebSocket.OPEN || ctrlWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    ctrlWs = new WebSocket(`${proto}//${location.host}/ws/control`);
+    ctrlWs.onopen = () => {
+      $("subStatus").textContent = "Live connected via HTTPS";
+    };
+    ctrlWs.onmessage = (ev) => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "state") {
+        renderState(msg);
+      } else if (msg.type === "error") {
+        showError("dialError", msg.message);
+      }
+    };
+    ctrlWs.onclose = (ev) => {
+      ctrlWs = null;
+      if (ev.code === 4401) {
+        showPinScreen();
+        return;
+      }
+      $("subStatus").textContent = "Reconnecting...";
+      setTimeout(connectControlWs, 1500);
+    };
+  }
+
+  function sendCtrl(payload) {
+    if (ctrlWs && ctrlWs.readyState === WebSocket.OPEN) {
+      ctrlWs.send(JSON.stringify(payload));
+    }
+  }
+
+  function renderState(s) {
+    appState = s;
+    const pAdb = $("pillAdb");
+    pAdb.textContent = s.adb_connected ? "ADB: Connected" : "ADB: Offline";
+    pAdb.className = `pill ${s.adb_connected ? "ok" : "bad"}`;
+
+    const pSim = $("pillSim");
+    const sig = s.signal_dbm !== null && s.signal_dbm !== undefined ? `${s.signal_dbm} dBm` : "n/a";
+    pSim.textContent = `SIM: ${s.carrier} (${sig})`;
+    pSim.className = `pill ${s.voice_state === "home" || s.voice_state === "roaming" ? "ok" : "warn"}`;
+
+    const pJack = $("pillJack");
+    if (s.jack_mode === "headset") {
+      pJack.textContent = "🎧+🎤 Headset Ready";
+      pJack.className = "pill ok";
+    } else if (s.jack_mode === "headphone") {
+      pJack.textContent = "🎧 Audio Out Only";
+      pJack.className = "pill warn";
+    } else {
+      pJack.textContent = "⚠️ 3.5mm Unplugged";
+      pJack.className = "pill bad";
+    }
+
+    $("rngCap").value = s.capture_volume;
+    $("valCap").textContent = s.capture_volume;
+    $("rngOut").value = s.line_out_volume;
+    $("valOut").textContent = s.line_out_volume;
+    $("chkHum").checked = !!s.hum_filter;
+    $("bridgeBadge").textContent = s.audio_bridge_active ? "Audio bridge LIVE (16 kHz PCM)" : "Audio bridge idle";
+    $("btnAudioTest").textContent = s.manual_monitor ? "Stop Audio Test" : "Live Audio Test";
+
+    const callCard = $("callCard");
+    if (s.call_state === 1) {
+      callCard.classList.remove("hidden");
+      callCard.classList.add("ringing");
+      $("callBadge").textContent = "Incoming SIM Call";
+      $("callNumber").textContent = s.remote_number || "Unknown Number";
+      $("callTimer").textContent = "Ringing...";
+      $("ringingActions").classList.remove("hidden");
+      $("activeActions").classList.add("hidden");
+      startRingtone();
+    } else if (s.call_state === 2) {
+      stopRingtone();
+      callCard.classList.remove("hidden", "ringing");
+      $("callBadge").textContent = s.call_direction === "outgoing" ? "Outgoing Call" : "Active Call";
+      $("callNumber").textContent = s.remote_number || "Active SIM Call";
+      $("ringingActions").classList.add("hidden");
+      $("activeActions").classList.remove("hidden");
+      if (!audioWs) ensureAudioStarted();
+    } else {
+      stopRingtone();
+      callCard.classList.add("hidden");
+      callCard.classList.remove("ringing");
+      inCallKeypad = false;
+      if (!s.manual_monitor && audioWs && Date.now() > dialGraceUntil) {
+        stopAudioEngine();
+      }
+    }
+
+    $("dialActionRow").classList.toggle("hidden", s.call_state === 2 && inCallKeypad);
+    renderHistory(s.recent_calls || []);
+  }
+
+  function renderHistory(items) {
+    const el = $("historyList");
+    if (!items.length) {
+      el.innerHTML = '<div class="sub" style="text-align:center;padding:16px;">No calls recorded yet.</div>';
+      return;
+    }
+    el.innerHTML = items.map((c) => {
+      const icon = c.status === "missed" ? "📵" : (c.direction === "outgoing" ? "📤" : "📞");
+      const dur = c.duration_s ? ` • ${formatDuration(c.duration_s)}` : "";
+      return `
+        <div class="history-item">
+          <div>
+            <div style="font-weight:700;font-size:15px;">${icon} ${escapeHtml(c.number)}</div>
+            <div class="sub">${escapeHtml(c.status)} • ${formatTime(c.ts)}${dur}</div>
+          </div>
+          <button class="btn btn-green" style="padding:7px 12px;font-size:12px;" data-redial="${escapeHtml(c.number)}">Call</button>
+        </div>
+      `;
+    }).join("");
+    el.querySelectorAll("[data-redial]").forEach((btn) => {
+      btn.onclick = () => startOutgoingCall(btn.getAttribute("data-redial"));
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m]));
+  }
+
+  async function startOutgoingCall(number) {
+    showError("dialError", "");
+    const clean = (number || "").trim();
+    if (!clean) {
+      showError("dialError", "Enter a phone number first.");
+      return;
+    }
+    dialGraceUntil = Date.now() + 8000;
+    await ensureAudioStarted();
+    sendCtrl({ action: "dial", number: clean });
+  }
+
+  function showPinScreen() {
+    stopRingtone();
+    stopAudioEngine(true);
+    if (ctrlWs) { try { ctrlWs.close(); } catch {} ctrlWs = null; }
+    $("viewMain").classList.add("hidden");
+    $("btnLogout").classList.add("hidden");
+    $("viewPin").classList.remove("hidden");
+    $("subStatus").textContent = "Locked";
+    $("pinInput").focus();
+  }
+
+  function showMainScreen() {
+    $("viewPin").classList.add("hidden");
+    $("viewMain").classList.remove("hidden");
+    $("btnLogout").classList.remove("hidden");
+    connectControlWs();
+  }
+
+  async function submitPin() {
+    showError("pinError", "");
+    const pin = $("pinInput").value.trim();
+    if (!pin) return;
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin }),
+    });
+    if (res.ok) {
+      $("pinInput").value = "";
+      showMainScreen();
+      ensureAudioStarted();
+    } else {
+      showError("pinError", "Wrong PIN");
+      $("pinInput").select();
+    }
+  }
+
+  // Event bindings
+  $("btnUnlock").onclick = submitPin;
+  $("pinInput").onkeydown = (e) => { if (e.key === "Enter") submitPin(); };
+  $("btnLogout").onclick = async () => {
+    await fetch("/api/logout", { method: "POST" });
+    showPinScreen();
+  };
+
+  $("tabDial").onclick = () => {
+    $("tabDial").classList.add("active");
+    $("tabHistory").classList.remove("active");
+    $("viewDial").classList.remove("hidden");
+    $("viewHistory").classList.add("hidden");
+  };
+  $("tabHistory").onclick = () => {
+    $("tabHistory").classList.add("active");
+    $("tabDial").classList.remove("active");
+    $("viewHistory").classList.remove("hidden");
+    $("viewDial").classList.add("hidden");
+  };
+
+  $("keypad").querySelectorAll(".key").forEach((btn) => {
+    btn.onclick = () => {
+      const d = btn.getAttribute("data-digit");
+      if (appState && appState.call_state === 2) {
+        sendCtrl({ action: "dtmf", digit: d });
+      }
+      $("dialInput").value += d;
+    };
+  });
+  $("btnPlus").onclick = () => { $("dialInput").value += "+"; };
+  $("btnBackspace").onclick = () => { $("dialInput").value = $("dialInput").value.slice(0, -1); };
+  $("dialInput").onkeydown = (e) => {
+    if (e.key === "Enter") startOutgoingCall($("dialInput").value);
+  };
+  $("btnCall").onclick = () => startOutgoingCall($("dialInput").value);
+
+  $("btnAnswer").onclick = async () => {
+    stopRingtone();
+    dialGraceUntil = Date.now() + 8000;
+    await ensureAudioStarted();
+    sendCtrl({ action: "answer" });
+  };
+  $("btnDecline").onclick = () => {
+    stopRingtone();
+    sendCtrl({ action: "hangup" });
+  };
+  $("btnHangup").onclick = () => sendCtrl({ action: "hangup" });
+  $("btnMuteMic").onclick = () => {
+    micMuted = !micMuted;
+    $("btnMuteMic").textContent = micMuted ? "Mic: Muted" : "Mic: On";
+  };
+  $("btnMuteSpk").onclick = () => {
+    spkMuted = !spkMuted;
+    $("btnMuteSpk").textContent = spkMuted ? "Speaker: Muted" : "Speaker: On";
+  };
+  $("btnToggleDtmf").onclick = () => {
+    inCallKeypad = !inCallKeypad;
+    $("dialActionRow").classList.toggle("hidden", appState && appState.call_state === 2 && inCallKeypad);
+  };
+
+  $("settingsHeader").onclick = () => {
+    const body = $("settingsBody");
+    const open = body.classList.toggle("hidden");
+    $("settingsChevron").textContent = open ? "▼" : "▲";
+  };
+  const pushMixer = () => sendCtrl({
+    action: "set_mixer",
+    capture_volume: Number($("rngCap").value),
+    line_out_volume: Number($("rngOut").value),
+    hum_filter: $("chkHum").checked,
+  });
+  $("rngCap").oninput = () => { $("valCap").textContent = $("rngCap").value; };
+  $("rngOut").oninput = () => { $("valOut").textContent = $("rngOut").value; };
+  $("rngCap").onchange = pushMixer;
+  $("rngOut").onchange = pushMixer;
+  $("chkHum").onchange = pushMixer;
+  $("btnAudioTest").onclick = async () => {
+    const next = !(appState && appState.manual_monitor);
+    if (next) {
+      dialGraceUntil = Date.now() + 5000;
+      sendCtrl({ action: "audio_test", enable: true });
+      const ok = await ensureAudioStarted();
+      if (!ok) {
+        dialGraceUntil = 0;
+        sendCtrl({ action: "audio_test", enable: false });
+        return;
+      }
+    } else {
+      dialGraceUntil = 0;
+      stopAudioEngine();
+      sendCtrl({ action: "audio_test", enable: false });
+    }
+  };
+
+  // Timer & VU animation loop
+  setInterval(() => {
+    if (appState && appState.call_state === 2 && appState.call_started_ts) {
+      const secs = Math.max(0, Math.floor(Date.now() / 1000 - appState.call_started_ts));
+      $("callTimer").textContent = formatDuration(secs);
+    }
+    $("rxMeter").style.width = `${rxLevel}%`;
+    $("txMeter").style.width = `${txLevel}%`;
+    rxLevel = Math.max(0, rxLevel - 8);
+    txLevel = Math.max(0, txLevel - 8);
+  }, 120);
+
+  // Resume suspended AudioContext on any tap/click/key anywhere on the page
+  const unlockAudioOnGesture = () => {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {}
+    }
+    if (audioCtx && audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    if (appState && (appState.call_state === 2 || appState.manual_monitor)) {
+      ensureAudioStarted();
+    }
+  };
+  window.addEventListener("pointerdown", unlockAudioOnGesture, { passive: true });
+  window.addEventListener("keydown", unlockAudioOnGesture, { passive: true });
+
+  // Boot
+  fetch("/api/health").then((r) => r.json()).then((d) => {
+    if (d.authenticated) showMainScreen();
+    else showPinScreen();
+  }).catch(() => showPinScreen());
+})();
+</script>
+</body>
+</html>

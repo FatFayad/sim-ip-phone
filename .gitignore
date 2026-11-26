@@ -1,0 +1,13 @@
+*.env
+!*.env.example
+.env
+certs/
+*.pem
+*.key
+state.json
+calls_history.json
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+Thumbs.db
