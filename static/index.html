@@ -714,6 +714,7 @@
       showError("dialError", "Enter a phone number first.");
       return;
     }
+    if (!confirm(`Place SIM call to ${clean}?`)) return;
     dialGraceUntil = Date.now() + 8000;
     await ensureAudioStarted();
     sendCtrl({ action: "dial", number: clean });
@@ -751,7 +752,12 @@
       showMainScreen();
       ensureAudioStarted();
     } else {
-      showError("pinError", "Wrong PIN");
+      let msg = "Wrong PIN";
+      try {
+        const err = await res.json();
+        if (err && err.detail) msg = err.detail;
+      } catch {}
+      showError("pinError", msg);
       $("pinInput").select();
     }
   }

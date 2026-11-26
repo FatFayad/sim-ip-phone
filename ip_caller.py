@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 import hashlib
 import hmac
+import ipaddress
 import json
 import math
 import os
@@ -58,15 +59,29 @@ STEREO_CHUNK_BYTES = FRAME_SAMPLES * 4  # 2560 bytes (S16_LE stereo)
 COOKIE_NAME = "sim_caller_session"
 SESSION_TTL_SECONDS = 30 * 86400
 HPF_ALPHA = 0.9329  # ~183 Hz 1st-order high-pass at 16 kHz
+ALLOWED_V4_NETS = (
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("100.64.0.0/10"),  # Tailscale CGNAT
+)
+ALLOWED_V6_NETS = (
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+)
+LOGIN_MAX_FAILS = 5
+LOGIN_WINDOW_SECONDS = 900
 
 
 @dataclass
 class CallerConfig:
     """Configuration loaded from caller.env."""
 
-    bind_host: str = "0.0.0.0"
+    bind_host: str = "127.0.0.1"
     https_port: int = 5443
-    caller_pin: str = "2580"
+    caller_pin: str = ""
     session_secret: str = ""
     adb_serial: str = ""
     alsa_device: str = "plughw:0,0"
@@ -110,9 +125,9 @@ def load_caller_config(
 
     hum_raw = (raw.get("HUM_FILTER_ENABLED") or "true").strip().lower()
     return CallerConfig(
-        bind_host=raw.get("BIND_HOST", "0.0.0.0").strip() or "0.0.0.0",
+        bind_host=raw.get("BIND_HOST", "127.0.0.1").strip() or "127.0.0.1",
         https_port=_int_val("HTTPS_PORT", 5443, 1, 65535),
-        caller_pin=raw.get("CALLER_PIN", "2580").strip() or "2580",
+        caller_pin=raw.get("CALLER_PIN", "").strip(),
         session_secret=secret,
         adb_serial=raw.get("ADB_SERIAL", "").strip(),
         alsa_device=raw.get("ALSA_DEVICE", "plughw:0,0").strip() or "plughw:0,0",
@@ -120,6 +135,55 @@ def load_caller_config(
         line_out_volume=_int_val("LINE_OUT_VOLUME", 45, 0, 87),
         hum_filter_enabled=hum_raw in ("1", "true", "yes", "on"),
     )
+
+
+def is_allowed_client_ip(host: str | None) -> bool:
+    """Allow only loopback, RFC1918 LAN, and Tailscale CGNAT addresses."""
+    if not host:
+        return False
+    try:
+        ip = ipaddress.ip_address(host.split("%", 1)[0])
+    except ValueError:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    nets = ALLOWED_V4_NETS if isinstance(ip, ipaddress.IPv4Address) else ALLOWED_V6_NETS
+    return any(ip in net for net in nets)
+
+
+class LoginRateLimiter:
+    """In-memory per-IP login rate limiter (5 failures in 15 min -> 15 min lockout)."""
+
+    def __init__(
+        self, max_fails: int = LOGIN_MAX_FAILS, window_s: int = LOGIN_WINDOW_SECONDS
+    ) -> None:
+        self.max_fails = max_fails
+        self.window_s = window_s
+        self._fails: dict[str, list[float]] = {}
+        self._locked_until: dict[str, float] = {}
+
+    def retry_after(self, ip: str, now: float | None = None) -> int:
+        ts = time.monotonic() if now is None else now
+        until = self._locked_until.get(ip, 0.0)
+        if until > ts:
+            return max(1, math.ceil(until - ts))
+        self._locked_until.pop(ip, None)
+        return 0
+
+    def record_failure(self, ip: str, now: float | None = None) -> int:
+        ts = time.monotonic() if now is None else now
+        recent = [t for t in self._fails.get(ip, []) if ts - t < self.window_s]
+        recent.append(ts)
+        if len(recent) >= self.max_fails:
+            self._fails.pop(ip, None)
+            self._locked_until[ip] = ts + self.window_s
+            return self.window_s
+        self._fails[ip] = recent
+        return 0
+
+    def reset(self, ip: str) -> None:
+        self._fails.pop(ip, None)
+        self._locked_until.pop(ip, None)
 
 
 def sign_session_token(secret: str, now_ts: float | None = None) -> str:
@@ -752,11 +816,24 @@ def build_app(config: CallerConfig) -> FastAPI:
     app = FastAPI(title="H0MES SIM IP Caller", lifespan=lifespan)
     app.state.manager = manager
     app.state.config = config
+    login_limiter = LoginRateLimiter()
+    # shortcut: in-memory revocation clears on restart; run `set-pin` for persistent global logout
+    revoked_tokens: set[str] = set()
+
+    @app.middleware("http")
+    async def _restrict_to_local_networks(request: Request, call_next: Any) -> Response:
+        host = request.client.host if request.client else None
+        if not is_allowed_client_ip(host):
+            return JSONResponse({"detail": "Forbidden"}, status_code=403)
+        return await call_next(request)
+
+    def _is_valid_token(token: str | None) -> bool:
+        return bool(token) and token not in revoked_tokens and verify_session_token(
+            token, config.session_secret
+        )
 
     def _is_authed(request: Request) -> bool:
-        return verify_session_token(
-            request.cookies.get(COOKIE_NAME), config.session_secret
-        )
+        return _is_valid_token(request.cookies.get(COOKIE_NAME))
 
     def _require_auth(request: Request) -> None:
         if not _is_authed(request):
@@ -776,10 +853,26 @@ def build_app(config: CallerConfig) -> FastAPI:
 
     @app.post("/api/login")
     async def login(request: Request, response: Response) -> JSONResponse:
+        client_ip = request.client.host if request.client else "unknown"
+        wait = login_limiter.retry_after(client_ip)
+        if wait > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many failed attempts. Try again in {wait}s.",
+                headers={"Retry-After": str(wait)},
+            )
         body = await request.json()
         pin = str(body.get("pin", "")).strip()
         if not hmac.compare_digest(pin, config.caller_pin):
+            locked = login_limiter.record_failure(client_ip)
+            if locked > 0:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many failed attempts. Try again in {locked}s.",
+                    headers={"Retry-After": str(locked)},
+                )
             raise HTTPException(status_code=401, detail="Incorrect PIN")
+        login_limiter.reset(client_ip)
         token = sign_session_token(config.session_secret)
         resp = JSONResponse({"ok": True})
         resp.set_cookie(
@@ -794,7 +887,10 @@ def build_app(config: CallerConfig) -> FastAPI:
         return resp
 
     @app.post("/api/logout")
-    async def logout() -> JSONResponse:
+    async def logout(request: Request) -> JSONResponse:
+        token = request.cookies.get(COOKIE_NAME)
+        if token:
+            revoked_tokens.add(token)
         resp = JSONResponse({"ok": True})
         resp.delete_cookie(key=COOKIE_NAME, path="/")
         return resp
@@ -858,8 +954,10 @@ def build_app(config: CallerConfig) -> FastAPI:
 
     @app.websocket("/ws/control")
     async def ws_control(websocket: WebSocket) -> None:
-        token = websocket.cookies.get(COOKIE_NAME)
-        if not verify_session_token(token, config.session_secret):
+        if not is_allowed_client_ip(websocket.client.host if websocket.client else None):
+            await websocket.close(code=4403)
+            return
+        if not _is_valid_token(websocket.cookies.get(COOKIE_NAME)):
             await websocket.close(code=4401)
             return
         await websocket.accept()
@@ -897,8 +995,10 @@ def build_app(config: CallerConfig) -> FastAPI:
 
     @app.websocket("/ws/audio")
     async def ws_audio(websocket: WebSocket) -> None:
-        token = websocket.cookies.get(COOKIE_NAME)
-        if not verify_session_token(token, config.session_secret):
+        if not is_allowed_client_ip(websocket.client.host if websocket.client else None):
+            await websocket.close(code=4403)
+            return
+        if not _is_valid_token(websocket.cookies.get(COOKIE_NAME)):
             await websocket.close(code=4401)
             return
         await websocket.accept()
@@ -931,8 +1031,24 @@ def _service_active_status() -> str:
         return f"unavailable ({exc})"
 
 
+def validate_pin(pin: str) -> str | None:
+    """Return an error message if PIN is missing, weak default, or invalid."""
+    p = pin.strip()
+    if not p:
+        return "CALLER_PIN is not set. Run: ./ip_caller.py set-pin <PIN>"
+    if p == "2580":
+        return "Refusing weak default PIN (2580). Run: ./ip_caller.py set-pin <NEW_PIN>"
+    if not re.fullmatch(r"[A-Za-z0-9]{4,32}", p):
+        return "PIN must be 4-32 alphanumeric characters."
+    return None
+
+
 def cmd_run(args: argparse.Namespace) -> int:
     config = load_caller_config(args.config, ensure_secret=True)
+    pin_err = validate_pin(config.caller_pin)
+    if pin_err:
+        print(pin_err, file=sys.stderr)
+        return 1
     if not DEFAULT_CERT_PATH.exists() or not DEFAULT_KEY_PATH.exists():
         print(
             f"Missing TLS cert/key at {DEFAULT_CERT_PATH} and {DEFAULT_KEY_PATH}",
@@ -962,8 +1078,9 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 def cmd_set_pin(args: argparse.Namespace) -> int:
     pin = args.pin.strip()
-    if not re.fullmatch(r"[A-Za-z0-9]{4,32}", pin):
-        print("PIN must be 4–32 alphanumeric characters.", file=sys.stderr)
+    pin_err = validate_pin(pin)
+    if pin_err:
+        print(pin_err, file=sys.stderr)
         return 1
     new_secret = secrets.token_hex(32)
     sim_notifier.update_config_file(
@@ -972,7 +1089,7 @@ def cmd_set_pin(args: argparse.Namespace) -> int:
         chmod_600=True,
     )
     print(f"Updated CALLER_PIN and rotated SESSION_SECRET in {args.config} (mode 600).")
-    if _service_active_status() == "active":
+    if _service_active_status() in ("active", "activating", "failed", "inactive"):
         proc = subprocess.run(
             ["systemctl", "--user", "restart", SERVICE_NAME],
             capture_output=True,
@@ -1087,6 +1204,28 @@ def cmd_self_test(_args: argparse.Namespace) -> int:
 
     stereo_round = dsp_mono_to_stereo(out_1k)
     assert len(stereo_round) == len(out_1k) * 2
+
+    # Security checks: PIN policy, IP allowlist, login rate limiter
+    assert validate_pin("") is not None
+    assert validate_pin("2580") is not None
+    assert validate_pin("ab") is not None
+    assert validate_pin("847291") is None
+
+    for ok_ip in ("127.0.0.1", "::1", "192.168.1.50", "10.0.0.5", "100.64.0.10", "::ffff:192.168.1.50"):
+        assert is_allowed_client_ip(ok_ip), f"Should allow {ok_ip}"
+    for bad_ip in ("", None, "8.8.8.8", "1.1.1.1", "203.0.113.5", "not-an-ip"):
+        assert not is_allowed_client_ip(bad_ip), f"Should block {bad_ip}"
+
+    lim = LoginRateLimiter(max_fails=3, window_s=60)
+    assert lim.retry_after("192.168.1.9", now=100.0) == 0
+    assert lim.record_failure("192.168.1.9", now=100.0) == 0
+    assert lim.record_failure("192.168.1.9", now=101.0) == 0
+    assert lim.record_failure("192.168.1.9", now=102.0) == 60
+    assert lim.retry_after("192.168.1.9", now=120.0) == 42
+    assert lim.retry_after("192.168.1.9", now=165.0) == 0
+    lim.record_failure("192.168.1.9", now=170.0)
+    lim.reset("192.168.1.9")
+    assert lim.retry_after("192.168.1.9", now=171.0) == 0
 
     print("IP-CALLER SELF-TEST OK")
     return 0
